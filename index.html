@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Человек или машина? — оценка рукописных слов</title>
+<style>
+:root{ --ink:#1c1c1e; --mut:#6b6b70; --line:#e2e2e6; --acc:#2f5bd3; --ok:#2e7d32; --bad:#c62828; }
+*{ box-sizing:border-box; } body{ margin:0; font:16px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); background:#fafafa; }
+.screen{ display:none; max-width:760px; margin:0 auto; padding:28px 18px 60px; } .screen.on{ display:block; }
+h1{ font-size:24px; margin:0 0 14px; }
+p,li{ color:#333; } .small{ font-size:13px; color:var(--mut); }
+.card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; margin:14px 0; }
+input[type=text]{ font-size:18px; padding:10px 12px; border:1px solid #ccc; border-radius:8px; width:220px; letter-spacing:1px; text-transform:uppercase; }
+button{ font-size:16px; padding:10px 18px; border-radius:8px; border:1px solid #ccc; background:#fff; cursor:pointer; color:var(--ink); }
+button.pri{ background:var(--acc); color:#fff; border-color:var(--acc); } button:disabled{ opacity:.45; cursor:default; }
+label.opt{ display:block; margin:6px 0; cursor:pointer; }
+.err{ color:var(--bad); font-size:14px; min-height:20px; margin-top:6px; }
+#cv-wrap{ background:#fff; border:1px solid var(--line); border-radius:12px; height:260px; display:flex; align-items:center; justify-content:center; }
+canvas{ max-width:100%; max-height:100%; }
+.word{ text-align:center; color:var(--mut); margin:10px 0 4px; font-size:15px; }
+.btns{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:14px; }
+.btns button{ padding:14px 6px; font-size:15px; } .btns .h{ border-color:#7aa37c; } .btns .m{ border-color:#c48a8a; }
+.btns button kbd{ display:block; font-size:11px; color:var(--mut); margin-top:3px; font-family:inherit; }
+.top{ display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--mut); }
+.bar{ height:4px; background:var(--line); border-radius:2px; margin:8px 0 14px; } .bar>div{ height:100%; background:var(--acc); border-radius:2px; width:0; }
+.up.ok{ color:var(--ok); } .up.bad{ color:var(--bad); } .up.busy{ color:var(--mut); }
+.row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+</style></head><body>
+
+<div class="screen on" id="s-code">
+  <h1>Человек или машина?</h1>
+  <p>Некоторые слова ниже написаны людьми от руки на планшете, другие сгенерированы компьютерной моделью. Ваша задача — для каждого слова сказать, кто его написал.</p>
+  <div class="card">
+    <p style="margin-top:0">Введите личный код, который вам прислали (например <b>R07-K3QF</b>).</p>
+    <div class="row"><input type="text" id="code" maxlength="12" autocomplete="off" spellcheck="false"><button class="pri" id="btn-code">Дальше</button></div>
+    <div class="err" id="code-err"></div>
+    <p class="small">Код нужен, чтобы каждый участник видел свой набор слов и мог продолжить с того же места. Имя мы не спрашиваем и не храним.</p>
+  </div>
+</div>
+
+<div class="screen" id="s-consent">
+  <h1>Перед началом</h1>
+  <div class="card">
+    <p style="margin-top:0"><b>Что это.</b> Исследование для научной статьи о генерации рукописного текста. Вы увидите около 175 слов и для каждого выберете один из четырёх ответов. Это занимает 10–15 минут; можно прерваться и вернуться по тому же коду.</p>
+    <p><b>Что сохраняется.</b> Номер вашего кода (без имени), ваши ответы, время ответа на каждое слово и два ответа ниже. Данные используются только в обезличенном виде и могут быть опубликованы вместе со статьёй.</p>
+    <p style="margin-bottom:0"><b>Добровольно.</b> Вы можете остановиться в любой момент. Чтобы удалить свои ответы, напишите тому, кто прислал вам код.</p>
+  </div>
+  <div class="card">
+    <p style="margin-top:0"><b>Русский язык для вас:</b></p>
+    <label class="opt"><input type="radio" name="nat" value="native"> родной</label>
+    <label class="opt"><input type="radio" name="nat" value="fluent"> свободно, но не родной</label>
+    <label class="opt"><input type="radio" name="nat" value="other"> другое</label>
+    <p><b>Вы профессионально связаны с почерком</b> (учитель, каллиграф, почерковед, разработка распознавания или генерации почерка)?</p>
+    <label class="opt"><input type="radio" name="exp" value="no"> нет</label>
+    <label class="opt"><input type="radio" name="exp" value="yes"> да</label>
+  </div>
+  <label class="opt"><input type="checkbox" id="agree"> Мне есть 18 лет, я прочитал(а) текст выше и согласен(на) участвовать.</label>
+  <div class="err" id="cons-err"></div>
+  <button class="pri" id="btn-consent">Перейти к инструкции</button>
+</div>
+
+<div class="screen" id="s-instr">
+  <h1>Как отвечать</h1>
+  <div class="card">
+    <ul style="margin:0;padding-left:20px">
+      <li>Под каждым рисунком подписано, какое слово там должно быть написано.</li>
+      <li>Все слова нарисованы одинаковой линией, так что толщина и цвет ничего не подсказывают. Смотрите на форму букв, соединения, наклон, ровность.</li>
+      <li>Сколько слов написано людьми, а сколько моделями, заранее не сказано. Отвечайте по первому впечатлению: обычно 2–5 секунд на слово.</li>
+      <li>Клавиши: <b>1</b> точно человек, <b>2</b> скорее человек, <b>3</b> скорее машина, <b>4</b> точно машина, <b>Backspace</b> — вернуться назад.</li>
+      <li>Некоторые слова покажутся дважды — это нормально.</li>
+    </ul>
+  </div>
+  <button class="pri" id="btn-start">Начать</button>
+</div>
+
+<div class="screen" id="s-rate">
+  <div class="top"><span id="prog"></span><span class="up upstate"></span></div>
+  <div class="bar"><div id="bar"></div></div>
+  <div id="cv-wrap"><canvas id="cv" width="1400" height="500"></canvas></div>
+  <div class="word">слово: <b id="wtext"></b></div>
+  <div class="btns">
+    <button class="h" data-a="1">Точно человек<kbd>1</kbd></button>
+    <button class="h" data-a="2">Скорее человек<kbd>2</kbd></button>
+    <button class="m" data-a="3">Скорее машина<kbd>3</kbd></button>
+    <button class="m" data-a="4">Точно машина<kbd>4</kbd></button>
+  </div>
+  <div class="row" style="justify-content:space-between;margin-top:14px"><button id="btn-back">← Назад</button><span class="small">Можно закрыть страницу и продолжить позже по тому же коду.</span></div>
+</div>
+
+<div class="screen" id="s-done">
+  <h1>Спасибо!</h1>
+  <p>Все ответы учтены. <span class="up upstate"></span></p>
+  <p class="small">Если строка выше показывает, что не всё отправлено, не закрывайте страницу пару минут: отправка повторяется автоматически.</p>
+</div>
+
+<script>
+"use strict";
+const SUPABASE_URL   = "https://mfnnodremhlvdkjjqqew.supabase.co";
+const SUPABASE_KEY   = "sb_publishable_isrN_bmBGuzZ8PakbkvX9Q_tcZ87m_I";   // publishable key; the table only accepts inserts
+const SUPABASE_TABLE = "turing_ratings";
+const STUDY = "turing_ru_v1";
+const LS_KEY = STUDY + "_session", OUT_KEY = STUDY + "_outbox";
+
+let DATA = null, ITEMS = {}, S = null, shownAt = 0;
+const $ = id => document.getElementById(id);
+function show(id){ document.querySelectorAll(".screen").forEach(e=>e.classList.remove("on")); $(id).classList.add("on"); if(id==="s-rate") draw(); }
+function hash32(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619);} return h>>>0; }
+function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function shuffle(a, r){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+async function sha256(s){ const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function uid(){ try{ if(crypto.randomUUID) return crypto.randomUUID(); }catch(e){} const b=new Uint8Array(16); crypto.getRandomValues(b); b[6]=(b[6]&15)|64; b[8]=(b[8]&63)|128; const h=[...b].map(x=>x.toString(16).padStart(2,"0")).join(""); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
+const store = (function(){ let ls=null; const mem={}; try{ ls=window.localStorage; ls.setItem("__p","1"); ls.removeItem("__p"); }catch(e){ ls=null; }
+  return { get(k){ if(ls){ try{ return ls.getItem(k); }catch(e){} } return k in mem ? mem[k] : null; }, set(k,v){ if(ls){ try{ ls.setItem(k,v); return; }catch(e){} } mem[k]=v; } }; })();
+function sessKey(rater){ return LS_KEY + "_" + rater; }
+function save(){ store.set(sessKey(S.rater), JSON.stringify(S)); store.set(LS_KEY, S.rater); }
+
+// upload queue: one POST per answer; upload_id is unique, so a retried POST returns 409 and is treated as sent
+let OUT = (function(){ try{ const v = JSON.parse(store.get(OUT_KEY) || "[]"); return Array.isArray(v) ? v : []; }catch(e){ return []; } })();
+let flushing = false, retryTimer = null, lastErr = "";
+function saveOut(){ store.set(OUT_KEY, JSON.stringify(OUT)); }
+function renderUpload(){
+  let text = "", cls = "up upstate"; const left = OUT.length;
+  if(flushing && left){ text = `отправка… осталось ${left}`; cls += " busy"; }
+  else if(left){ text = `не отправлено: ${left}` + (lastErr ? ` (${lastErr})` : "") + ", повторю"; cls += " bad"; }
+  else if(S && S.r.length){ text = "всё отправлено"; cls += " ok"; }
+  document.querySelectorAll(".upstate").forEach(el=>{ el.textContent = text; el.className = cls; });
+}
+async function postRow(row){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, { method:"POST", headers:{ "apikey":SUPABASE_KEY, "Content-Type":"application/json", "Prefer":"return=minimal" }, body:JSON.stringify(row) });
+  if(r.ok || r.status === 409) return true;
+  let msg = ""; try{ msg = (await r.text()).slice(0,80); }catch(e){}
+  lastErr = `ошибка ${r.status}` + (msg ? `: ${msg}` : ""); return false;
+}
+async function flush(){
+  if(flushing) return; flushing = true; renderUpload();
+  try{ while(OUT.length){ const row = OUT[0]; let ok = false;
+      try{ ok = await postRow(row); }catch(e){ lastErr = navigator.onLine === false ? "нет интернета" : "сервер недоступен"; }
+      if(!ok) break; lastErr = ""; OUT = OUT.filter(x=>x.upload_id !== row.upload_id); saveOut(); renderUpload(); } }
+  finally{ flushing = false; renderUpload(); if(OUT.length && !retryTimer) retryTimer = setTimeout(()=>{ retryTimer = null; flush(); }, 15000); }
+}
+window.addEventListener("online", ()=>flush());
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "visible") flush(); });
+window.addEventListener("beforeunload", e=>{ if(OUT.length){ e.preventDefault(); e.returnValue = ""; } });
+
+// Latin square: rater k sees word i in condition conds[(i + k) % n], so nobody sees one word in two versions
+function makeOrder(rater, k){
+  const r = rng(hash32(rater + "|" + STUDY)), C = DATA.conds;
+  let order = DATA.words.map((w, i)=>({ id: w.id + "|" + C[(i + k) % C.length], rep:false }));
+  order = shuffle(order, r);
+  DATA.catches.forEach((c, j)=>{ const at = Math.floor((j + 0.5) / DATA.catches.length * order.length) + j; order.splice(at, 0, { id:c.id, rep:false }); });
+  const pool = shuffle(order.slice(0, Math.floor(order.length * 0.5)).filter(x=>!x.id.startsWith("catch")), r).slice(0, DATA.n_repeats);
+  pool.forEach(x=>{ const first = order.findIndex(y=>y.id===x.id); const lo = Math.max(first + 40, Math.floor(order.length * 0.6)), hi = order.length;
+    order.splice(lo >= hi ? hi : lo + Math.floor(r() * (hi - lo)), 0, { id:x.id, rep:true }); });
+  return order;
+}
+
+// every item is already resampled to the same spacing and normalised to the same x-height
+function draw(){
+  if(S.i >= S.order.length){ finish(); return; }
+  const it = ITEMS[S.order[S.i].id], cv = $("cv"), g = cv.getContext("2d");
+  g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,cv.width,cv.height);
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; it.s.forEach(st=>st.forEach(([x,y])=>{ x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y); }));
+  const pad = 40, sc = Math.min(DATA.px_per_unit, (cv.width - 2*pad) / Math.max(1e-6, x1-x0), (cv.height - 2*pad) / Math.max(1e-6, y1-y0));
+  // coordinates are screen-style (y grows downwards), same as the canvas
+  const ox = (cv.width - sc*(x1-x0))/2 - sc*x0, oy = (cv.height - sc*(y1-y0))/2 - sc*y0;
+  g.lineWidth = 3.2; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#1c1c1e";
+  it.s.forEach(st=>{ g.beginPath(); st.forEach(([x,y],j)=>{ const X = ox + sc*x, Y = oy + sc*y; j ? g.lineTo(X,Y) : g.moveTo(X,Y); }); if(st.length===1){ const [x,y]=st[0]; g.lineTo(ox+sc*x+0.1, oy+sc*y); } g.stroke(); });
+  $("wtext").textContent = it.t;
+  $("prog").textContent = `${S.i + 1} / ${S.order.length}`; $("bar").style.width = (100 * S.i / S.order.length) + "%";
+  $("btn-back").disabled = S.i === 0; shownAt = performance.now(); renderUpload();
+}
+function answer(a){
+  if(!S || S.i >= S.order.length) return;
+  const o = S.order[S.i], it = ITEMS[o.id];
+  const row = { upload_id: uid(), study: STUDY, rater: S.rater, item_id: o.id, word_id: it.w, cond: it.c, answer: a, pos: S.i, is_repeat: o.rep,
+                dur_ms: Math.round(performance.now() - shownAt), rated_at: new Date().toISOString(), native: S.nat, expert: S.exp, user_agent: navigator.userAgent.slice(0,300) };
+  S.r.push({ pos:S.i, a }); S.i++; save(); OUT.push(row); saveOut(); flush(); draw();
+}
+function finish(){ $("bar").style.width = "100%"; show("s-done"); renderUpload(); }
+
+async function login(){
+  const raw = $("code").value.trim().toUpperCase().replace(/\s+/g,""); $("code-err").textContent = "";
+  if(!/^R\d{2}-[A-Z0-9]{4}$/.test(raw)){ $("code-err").textContent = "Код выглядит как R07-K3QF."; return; }
+  let h = ""; try{ h = await sha256(STUDY + "|" + raw); }catch(e){ $("code-err").textContent = "Браузер не поддерживает проверку кода; откройте страницу в Chrome, Safari или Firefox."; return; }
+  if(!DATA.code_hashes.includes(h)){ $("code-err").textContent = "Такого кода нет. Проверьте, нет ли опечатки."; return; }
+  const rater = raw.slice(0,3), k = parseInt(raw.slice(1,3), 10);
+  let prev = null; try{ prev = JSON.parse(store.get(sessKey(rater)) || "null"); }catch(e){}
+  if(prev && prev.order && prev.order.length){ S = prev; show(S.i >= S.order.length ? "s-done" : (S.nat ? "s-rate" : "s-consent")); return; }
+  S = { rater, k, order: makeOrder(rater, k), i:0, r:[], nat:null, exp:null, started: new Date().toISOString() }; save(); show("s-consent");
+}
+$("btn-code").onclick = login; $("code").addEventListener("keydown", e=>{ if(e.key==="Enter") login(); });
+$("btn-consent").onclick = ()=>{
+  const nat = document.querySelector("input[name=nat]:checked"), exp = document.querySelector("input[name=exp]:checked");
+  if(!nat || !exp){ $("cons-err").textContent = "Ответьте, пожалуйста, на оба вопроса."; return; }
+  if(!$("agree").checked){ $("cons-err").textContent = "Нужно согласие, чтобы продолжить."; return; }
+  S.nat = nat.value; S.exp = exp.value; save(); show("s-instr");
+};
+$("btn-start").onclick = ()=>show("s-rate");
+document.querySelectorAll(".btns button").forEach(b=>b.onclick = ()=>answer(+b.dataset.a));
+$("btn-back").onclick = ()=>{ if(S.i > 0){ S.i--; save(); draw(); } };
+document.addEventListener("keydown", e=>{
+  if(!$("s-rate").classList.contains("on")) return;
+  if(["1","2","3","4"].includes(e.key)){ e.preventDefault(); answer(+e.key); }
+  else if(e.key === "Backspace"){ e.preventDefault(); $("btn-back").click(); }
+});
+(async function init(){
+  try{ const r = await fetch("items.json", { cache:"no-cache" }); DATA = await r.json(); }
+  catch(e){ $("code-err").textContent = "Не удалось загрузить слова. Обновите страницу."; return; }
+  for(const w of DATA.words) for(const c of DATA.conds) ITEMS[w.id + "|" + c] = { w:w.id, c, t:w.t, s:w.v[c] };
+  for(const c of DATA.catches) ITEMS[c.id] = { w:c.id, c:"catch", t:c.t, s:c.s };
+  const last = store.get(LS_KEY); if(last) $("code").placeholder = "последний: " + last;
+  flush();
+})();
+</script>
+</body></html>
