@@ -41,7 +41,7 @@ canvas{ max-width:100%; max-height:100%; }
 <div class="screen" id="s-consent">
   <h1>Перед началом</h1>
   <div class="card">
-    <p style="margin-top:0"><b>Что это.</b> Исследование для научной статьи о генерации рукописного текста. Вы увидите около 175 слов и для каждого выберете один из четырёх ответов. Это занимает 10–15 минут; можно прерваться и вернуться по тому же коду.</p>
+    <p style="margin-top:0"><b>Что это.</b> Исследование для научной статьи о генерации рукописного текста. Вы увидите 88 слов и для каждого выберете один из четырёх ответов. Это занимает 4–5 минут; можно прерваться и вернуться по тому же коду.</p>
     <p><b>Что сохраняется.</b> Номер вашего кода (без имени), ваши ответы, время ответа на каждое слово и два ответа ниже. Данные используются только в обезличенном виде и могут быть опубликованы вместе со статьёй.</p>
     <p style="margin-bottom:0"><b>Добровольно.</b> Вы можете остановиться в любой момент. Чтобы удалить свои ответы, напишите тому, кто прислал вам код.</p>
   </div>
@@ -98,10 +98,12 @@ canvas{ max-width:100%; max-height:100%; }
 const SUPABASE_URL   = "https://mfnnodremhlvdkjjqqew.supabase.co";
 const SUPABASE_KEY   = "sb_publishable_isrN_bmBGuzZ8PakbkvX9Q_tcZ87m_I";   // publishable key; the table only accepts inserts
 const SUPABASE_TABLE = "turing_ratings";
-const STUDY = "turing_ru_v1";
-const LS_KEY = STUDY + "_session", OUT_KEY = STUDY + "_outbox";
+const STUDY = "turing_ru_v1";            // used only to check codes (the published hashes stay valid)
+const DESIGN = "turing_ru_v2";           // short version: 80 words + 4 checks + 4 repeats; stored in the 'study' column
+const N_REP = 4;
+const LS_KEY = DESIGN + "_session", OUT_KEY = STUDY + "_outbox";
 
-let DATA = null, ITEMS = {}, S = null, shownAt = 0;
+let DATA = null, ITEMS = {}, S = null, shownAt = 0, LOAD_ERR = "";
 const $ = id => document.getElementById(id);
 function show(id){ document.querySelectorAll(".screen").forEach(e=>e.classList.remove("on")); $(id).classList.add("on"); if(id==="s-rate") draw(); }
 function hash32(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619);} return h>>>0; }
@@ -144,12 +146,15 @@ window.addEventListener("beforeunload", e=>{ if(OUT.length){ e.preventDefault();
 
 // Latin square: rater k sees word i in condition conds[(i + k) % n], so nobody sees one word in two versions
 function makeOrder(rater, k){
-  const r = rng(hash32(rater + "|" + STUDY)), C = DATA.conds;
-  let order = DATA.words.map((w, i)=>({ id: w.id + "|" + C[(i + k) % C.length], rep:false }));
+  // Half of the 160 words per person (even or odd word index), 20 per version.
+  // Raters 1-4 rotate the versions over half A, raters 5-8 over half B, then repeat: every 8 codes cover every word in every version once.
+  const r = rng(hash32(rater + "|" + DESIGN)), C = DATA.conds, half = Math.floor((k - 1) / C.length) % 2;
+  let order = [];
+  DATA.words.forEach((w, i)=>{ if(i % 2 !== half) return; const j = (i - half) / 2; order.push({ id: w.id + "|" + C[(j + k) % C.length], rep:false }); });
   order = shuffle(order, r);
   DATA.catches.forEach((c, j)=>{ const at = Math.floor((j + 0.5) / DATA.catches.length * order.length) + j; order.splice(at, 0, { id:c.id, rep:false }); });
-  const pool = shuffle(order.slice(0, Math.floor(order.length * 0.5)).filter(x=>!x.id.startsWith("catch")), r).slice(0, DATA.n_repeats);
-  pool.forEach(x=>{ const first = order.findIndex(y=>y.id===x.id); const lo = Math.max(first + 40, Math.floor(order.length * 0.6)), hi = order.length;
+  const pool = shuffle(order.slice(0, Math.floor(order.length * 0.5)).filter(x=>!x.id.startsWith("catch")), r).slice(0, N_REP);
+  pool.forEach(x=>{ const first = order.findIndex(y=>y.id===x.id); const lo = Math.max(first + 25, Math.floor(order.length * 0.6)), hi = order.length;
     order.splice(lo >= hi ? hi : lo + Math.floor(r() * (hi - lo)), 0, { id:x.id, rep:true }); });
   return order;
 }
@@ -172,15 +177,20 @@ function draw(){
 function answer(a){
   if(!S || S.i >= S.order.length) return;
   const o = S.order[S.i], it = ITEMS[o.id];
-  const row = { upload_id: uid(), study: STUDY, rater: S.rater, item_id: o.id, word_id: it.w, cond: it.c, answer: a, pos: S.i, is_repeat: o.rep,
+  const row = { upload_id: uid(), study: DESIGN, rater: S.rater, item_id: o.id, word_id: it.w, cond: it.c, answer: a, pos: S.i, is_repeat: o.rep,
                 dur_ms: Math.round(performance.now() - shownAt), rated_at: new Date().toISOString(), native: S.nat, expert: S.exp, user_agent: navigator.userAgent.slice(0,300) };
   S.r.push({ pos:S.i, a }); S.i++; save(); OUT.push(row); saveOut(); flush(); draw();
 }
 function finish(){ $("bar").style.width = "100%"; show("s-done"); renderUpload(); }
 
 async function login(){
+  if(!DATA){ $("code-err").textContent = LOAD_ERR || "Слова ещё загружаются, подождите пару секунд."; return; }
+  try{ await login2(); }catch(e){ $("code-err").textContent = "Ошибка: " + (e && e.message ? e.message : e) + ". Обновите страницу."; console.error(e); }
+}
+async function login2(){
   const raw = $("code").value.trim().toUpperCase().replace(/\s+/g,""); $("code-err").textContent = "";
   if(!/^R\d{2}-[A-Z0-9]{4}$/.test(raw)){ $("code-err").textContent = "Код выглядит как R07-K3QF."; return; }
+  if(!(window.crypto && crypto.subtle)){ $("code-err").textContent = "Страницу нужно открыть по https://"; return; }
   let h = ""; try{ h = await sha256(STUDY + "|" + raw); }catch(e){ $("code-err").textContent = "Браузер не поддерживает проверку кода; откройте страницу в Chrome, Safari или Firefox."; return; }
   if(!DATA.code_hashes.includes(h)){ $("code-err").textContent = "Такого кода нет. Проверьте, нет ли опечатки."; return; }
   const rater = raw.slice(0,3), k = parseInt(raw.slice(1,3), 10);
@@ -204,8 +214,14 @@ document.addEventListener("keydown", e=>{
   else if(e.key === "Backspace"){ e.preventDefault(); $("btn-back").click(); }
 });
 (async function init(){
-  try{ const r = await fetch("items.json", { cache:"no-cache" }); DATA = await r.json(); }
-  catch(e){ $("code-err").textContent = "Не удалось загрузить слова. Обновите страницу."; return; }
+  $("btn-code").disabled = true; $("btn-code").textContent = "Загрузка…";
+  try{
+    const r = await fetch("items.json", { cache:"no-cache" });
+    if(!r.ok) throw new Error("items.json: HTTP " + r.status);
+    DATA = await r.json();
+    if(!DATA || !DATA.code_hashes || !DATA.words) throw new Error("items.json: неверный формат");
+  }catch(e){ LOAD_ERR = "Не удалось загрузить слова (" + e.message + "). Обновите страницу; если не помогает — напишите организатору."; $("code-err").textContent = LOAD_ERR; $("btn-code").textContent = "Дальше"; $("btn-code").disabled = false; return; }
+  $("btn-code").disabled = false; $("btn-code").textContent = "Дальше";
   for(const w of DATA.words) for(const c of DATA.conds) ITEMS[w.id + "|" + c] = { w:w.id, c, t:w.t, s:w.v[c] };
   for(const c of DATA.catches) ITEMS[c.id] = { w:c.id, c:"catch", t:c.t, s:c.s };
   const last = store.get(LS_KEY); if(last) $("code").placeholder = "последний: " + last;
